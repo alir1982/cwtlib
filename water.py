@@ -1,38 +1,46 @@
 import numpy as np
 import copy
-from measure_units import Ion, TempUnit, TDSUnit
 import sys
 import pathlib
 path = pathlib.Path(__file__).parent
 sys.path.append(str(path))
+from measure_units import Ion, TempUnit, TDSUnit
 
 class Water:
     '''
     В конструктор передается температура, рН электропроводность, жесткость, щелочность и прочие параметры воды. рН передается в виде float или int (необязательный)
     параметр. Жесткость или кальций, щелочность и электропроводность, температура - обязательные параметры
     '''
-    def __init__(self, ph, *args, **kwargs):
-        self.__dict__["ph"] = ph
-        self.__setattr__("cycles", 1)
-        try:
-            for v in args:
-                if type(v) in [Ion, TempUnit, TDSUnit]:
-                    self.__setattr__(v.name, v)
-            self.set_hrd()
-            self.check_is_minimally_enough()
-        except Exception as e:
-            raise Exception("Результат анализа неверен!")
-    
+    def __init__(self, ph, *args, a=4.17, b=1.7177, cycles=1):
+        '''
+        Class is initialized with pH, alkalinity, temperature, tds (required) and other ionic parameters (optional). a and b are parameters of regression model.for
+        pH vs log10(Alk as CaCO3).
+        :param ph: float
+        :param args: parameters of types Ion, TempUnit, TDSUnit
+        :param a: shift of regression model default 4.17
+        :param b: slope of regression model default 1.7177
+        :param cycles: number of cycles by default 1
+        '''
+        self.ph = ph
+        self.a = a
+        self.b = b
+        self.cycles = cycles
+        for v in args:
+            if isinstance(v, Ion) or isinstance(v, TempUnit) or isinstance(v, TDSUnit):
+                setattr(self, v.name, v)
+        self.set_hrd()
+        self.check_is_minimally_enough()
+
     def set_ion(self, i):
-        self.__dict__[i.name] = i
+        setattr(self, i.name, i)
 
     def check_is_minimally_enough(self):
         for n in ["alk", "ca", "temp", "tds"]:
-            if not n in self.__dict__.keys():
+            if not hasattr(self, n):
                 raise Exception(f"{n} has to be set")    
 
     def set_hrd(self):
-        rank = ("hrd" in self.__dict__.keys())*4 + ("ca" in self.__dict__.keys())*2 + ("mg" in self.__dict__.keys())*1
+        rank = hasattr(self, "hrd")*4 + hasattr(self, "ca")*2 + hasattr (self, "mg")*1
         if rank == 7:
             pass
         elif rank == 6:
@@ -59,13 +67,17 @@ class Water:
     def set_cycles(self, c):
         c_old = self.cycles
         self.cycles = c
-        for k, v in self.__dict__.items():
-            if type(v) in [Ion, TDSUnit]:
-                self.__dict__[k] *= c/c_old
+        for k in dir(self):
+            v = getattr(self, k)
+            try:
+                if isinstance(v, Ion) or isinstance(v, TDSUnit):
+                    setattr(self, k, v * c / c_old)
+            except:
+                pass
         self.ph = self.ph_predict()
 
-    def ph_predict(self, a=4.17, b=1.7177):
-        return a + b * np.log10(self.alk.caco3)
+    def ph_predict(self):
+        return self.a + self.b * np.log10(self.alk.caco3)
 
     def phs(self):
         return self.pk2() - self.pks() - np.log10(self.ca.mol) + self.phco3() + 5 * self.pfm()
@@ -128,8 +140,9 @@ class Water:
     def calc_ions(self):
         self.anions = 0 
         self.cations = 0
-        for k, v in self.__dict__.items():
-            if type(self.__dict__[k]) == Ion:
+        for k in dir(self):
+            v = getattr(self, k)
+            if isinstance(v, Ion):
                 if v.is_cation():
                     self.cations += v.caco3
                 else:
@@ -151,7 +164,7 @@ class Water:
 
     def larsen_modified(self, hti):
         '''Уточнить'''
-        return (self.cl.meq + self.so4.meq + self.calc_na())**0.5/self.alk.meq*self.temp/25*hti/50/24
+        return (self.cl.ppm + self.so4.ppm + self.calc_na().ppm)**0.5/self.alk.caco3*self.temp.c/25*hti.day
 
     def po4_si(self):
         return self.ph - (11.75 - np.log10(self.ca.caco3) - np.log10(self.po4.ppm) - 2 * np.log10(self.temp.c))/0.65

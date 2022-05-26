@@ -9,7 +9,7 @@ from tower import *
 
 class TestAir(unittest.TestCase):
     def setUp(self):
-        self.air = Air(tair=TempUnit(30, "c"), hair=HumidityUnit(50, "proc"), pair=PressureUnit(750, "hg"))
+        self.air = Air(TempUnit(30, "c"), HumidityUnit(50, "proc"), PressureUnit(750, "hg"))
     def test_evaporation_snip(self):
         self.assertAlmostEqual(0.0015, self.air.evaporation_snip(), 2)
         self.air.tair.c = 0

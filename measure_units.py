@@ -1,4 +1,6 @@
 import copy
+import numpy as np
+
 class MeasureUnit:
     '''
         Базовый класс для описания единиц измерения в дочерних классах переопределяется словарь units (аттрибут класса)
@@ -19,7 +21,7 @@ class MeasureUnit:
     
     def __getattr__(self, name):
         if name.startswith("__") or name in self.__dict__.keys():
-            return super(MeasureUnit, self).__getattribute__(name)
+            return super().__getattribute__(name)
         if name in self.units.keys():
             self.unit = name
             return self.value
@@ -31,6 +33,26 @@ class MeasureUnit:
             self.unit = name
             self.value = value
         super().__setattr__(name, value)
+    
+    def __cmp__(self, value):
+        if self._value > value._value:
+            return 1
+        elif self._value == value._value:
+            return 0
+        else:
+            return -1
+    
+    def __gt__(self, value):
+        if self._value > value._value:
+            return True
+        else:
+            return False
+    
+    def __ls__(self, value):
+        if self._value < value._value:
+            return True
+        else:
+            return False
 
 
     @property
@@ -73,43 +95,41 @@ class MeasureUnit:
         if type(other) == type(self):
             ans._value = self._value  + other.i_value
             return ans
-        elif type(other) in [int, float]:
-            ans.value = self.value + other
-            return ans
         else:
-            raise TypeError
-    
+            try:
+                ans.value = self.value + other
+                return ans
+            except:
+                raise Exception("MeasureUnits.__add__ problem with add value")
+
     def __mul__(self, other):
         ans = copy.copy(self)
-        if type(other) in [int, float]:
+        try:
             ans._value = self._value * other
             return ans
-        else:
-            raise TypeError
+        except:
+            raise Exception("MeasureUnits.__mul__ problem with add value")
     
     def __truediv__(self, other):
         ans = copy.copy(self)
 
-        if type(other) in [int, float]:
+        try:
             ans._value = self._value / other
             return ans
-        if type(other).__base__ == type(self).__base__:
-            return self.value/other.value
-
-        else:
-            raise TypeError
+        except:
+            raise Exception("MeasureUnits.__truediv__ problem with add value")
     
     def __sub__(self, other):
         ans = copy.copy(self)
-        if type(other) in [int, float]:
+        try:
             ans._value -= other
             return ans
-        else:
-            raise TypeError
-
+        except:
+            raise Exception("MeasureUnits.__sub__ problem with add value")
 
 
 class TempUnit(MeasureUnit):
+    class_name = "temp_unit"
     name = "temp"
     units = {
         "c" : (1, 0),
@@ -117,32 +137,34 @@ class TempUnit(MeasureUnit):
         "f" : (1.8, 32)
     }
 
+
 class VolumeRateUnit(MeasureUnit):
+    class_name = "volume_rate_unit"
     name="volume_rate"
-    units = dict(
-        gpd=["gal", "day"],
-        mph=["m3", "hour"]
-    )
-    def __init__(self, v, unit):
-        vol_unit, time_unit = unit.split("/")
-        self.volume = VolumeUnit(v, vol_unit)
-        self.time = TimeUnit(1, time_unit)
+
+    def __init__(self, value, unit):
+        if "/" in unit:
+            unit = unit.replace("/", "_")
+        self.volume = VolumeUnit(value, unit.split("_")[0])
+        self.time = TimeUnit(1, unit.split("_")[1])
 
     def __getattr__(self, item):
-        if item in self.units.keys():
-            v, t = self.units[item]
-            self.unit = f"{v}/{t}"
-            return self.value
+        if "_" in item and item not in self.__dict__.keys():
+            self.volume.unit = item.split("_")[0]
+            self.time.unit = item.split("_")[1]
+            return self.volume.value / self.time.value
         else:
-            return super(VolumeRateUnit, self).__getattr__(item)
+            return super().__getattribute__(item)
     
     def __setattr__(self, key, value):
-        if key in self.units.keys():
-            v, t = self.units[key]
-            self.unit = f"{v}/{t}"
-            self.value = value
+        if "_" in key and key not in self.__dict__.keys():
+            volume_unit = key.split("_")[0]
+            time_unit = key.split("_")[1]
+            self.volume.__setattr__(volume_unit, value)
+            self.time.__setattr__(time_unit, 1)
         else:
-            return super(VolumeRateUnit, self).__setattr__(key, value)
+            super().__setattr__(key, value)
+
 
     @property
     def value(self):
@@ -159,33 +181,45 @@ class VolumeRateUnit(MeasureUnit):
 
     @unit.setter
     def unit(self, u):
-        v, t = u.split("/")
+        if "/" in u:
+            u = u.replace("/", "_")
+        v, t = u.split("_")
         self.volume.unit = v
         self.time.unit = t
 
     def __add__(self, other):
-        if type(other) in [int, float]:
-            self.value += other
-            return self
+        from copy import deepcopy
+        if isinstance(other, VolumeRateUnit):
+            _prev_unit = other.unit
+            other.unit = self.unit
+            ans = VolumeRateUnit(self.value, self.unit)
+            ans.value += other.value
+            other.unit = _prev_unit
+            return ans
         else:
-            raise Exception("only int or float for VolumeRate + ")
+            try:
+                self.value += other
+                return self
+            except:
+                raise Exception("VolumeRateUnit.__add__ problem with add value")
 
     def __mul__(self, other):
-        if type(other) in [int, float]:
+        try:
             self.value *= other
             return self
-        else:
-            raise Exception("only int or float for VolumeRate * ")
+        except:
+            raise Exception("VolumeRateUnit.__mul__ problem with add value")
 
     def __truediv__(self, other):
-        if type(other) in [int, float]:
+        try:
             self.value /= other
             return self
-        else:
-            raise Exception("only int or float for VolumeRate /")
+        except:
+            raise Exception("VolumeRateUnit.__truediv__ problem with add value")
 
 
 class TimeUnit(MeasureUnit):
+    class_name = "time_unit"
     name = "time"
     units = dict(
         sec=1,
@@ -198,46 +232,55 @@ class TimeUnit(MeasureUnit):
     )
 
 class LengthUnit(MeasureUnit):
+    class_name = "length_unit"
     name="length"
     units = {"cm" : 1, "m" : 0.01, "mm" : 10, "inches":1/2.54}
 
 
 class VolumeUnit(MeasureUnit):
+    class_name = "volume_unit"
     name="volume"
-    units = {"l":1, "m3":0.001,"cm3":1000,"gal": 1/0.473/8,"pinta":1/0.473,"barrel":1/0.473/31.5/8}
+    units = {"l": 1, "m3": 0.001, "cm3": 1000, "gal": 1/0.473/8, "pinta": 1/0.473, "barrel": 1/0.473/31.5/8}
 
 
 class WeightUnit(MeasureUnit):
+    class_name = "weight_unit"
     name="weight"
     units = {"kg": 1,"g": 1000,"mg": 1000000, "ounce":1/0.02835, "lb":1/0.4536}
 
 
 class HeatUnit(MeasureUnit):
+    class_name = "heat_unit"
     name="heat"
     units = {"kj": 1, "kcal": 0.238845889, "btu": 0.000948, "j":1000}
 
 
 class PowerUnit(MeasureUnit):
+    class_name = "power_unit"
     name="power"
     units = {"kw":1, "mw":1/1000, "kcalh": 859.845228, "btuh": 3414.424784, "w":1000}
 
 
 class PressureUnit(MeasureUnit):
+    class_name = "pressure_unit"
     name="pressure"
     units = {"kpa":1, "hpa":10, "atm":1/101.325, "psi":0.145, "bar": 0.01, "hg" : 760/101.325, "water":9800/101.325, "pa":1000}
 
 
 class HumidityUnit(MeasureUnit):
+    class_name = "humidity_unit"
     name="humidity"
     units = {"proc":100, "ratio":1}
 
 
 class TDSUnit(MeasureUnit):
+    class_name = "tds_unit"
     name= "tds"
     units = {"usm":2, "ppm":1}
 
 
 class Ion(MeasureUnit):
+    class_name = "ion_unit"
     ions = {
         "cl" : (35.5, 1, -1),
         "so4" : (96, 2, -1),
@@ -293,11 +336,12 @@ class Ion(MeasureUnit):
             else:
                 raise Exception("Нельзя складывать концентрации разных ионов")
             return ans
-        elif type(other) in [int, float]:
-            ans.value = self.value + other
-            return ans
         else:
-            raise Exception("Складывать можно только с числом или другим объектом класса Ion")
+            try:
+                ans.value = self.value + other
+                return ans
+            except:
+                raise Exception("Ion.__add__ problem with add value")
     
     def __sub__(self, other):
         ans = Ion(self.name, self.value, self.unit)
@@ -313,9 +357,11 @@ class Ion(MeasureUnit):
             else:
                 raise Exception("Нельзя вычитать концентрации разных ионов")
             return ans
-        elif type(other) in [int, float]:
-            ans.value = self.value + other
-            return ans
         else:
-            raise Exception("Складывать можно только с числом или другим объектом класса Ion")
+            try:
+                ans.value = self.value + other
+                return ans
+            except:
+                raise Exception("VolumeRateUnit.__sub__ problem with add value")
+
     

@@ -1,13 +1,13 @@
 import math
 import numpy as np
 from copy import deepcopy
-from measure_units import *
 import requests
 import os
 import pathlib
 import sys
 path = pathlib.Path(__file__).parent
 sys.path.append(str(path))
+from measure_units import *
 
 try:
     TOKEN = os.environ["OpenWeatherMap"]
@@ -18,8 +18,17 @@ class Air:
     '''
     Передаем температуру, влажность и давление
     '''
-    def __init__(self, tair=TempUnit(25, "c"), hair=HumidityUnit(0.5, "ratio"), pair=PressureUnit(748, "hg")):
-        self.tair, self.hair, self.pair = tair, hair, pair
+    class_name = "air"
+    def __init__(self, *args):
+        for v in args:
+            if isinstance(v, TempUnit):
+                self.tair = v
+            elif isinstance(v, HumidityUnit):
+                self.hair = v
+            elif isinstance(v, PressureUnit):
+                self.pair = v
+            else:
+                raise Exception('Некорректный тип значение')
 
     '''
     либо загружаем ее из OpenWeatherMap
@@ -64,26 +73,42 @@ class Air:
         return self.wb
 
     def wet_bulb(self):
-        wb = self.tair.c * np.arctan(0.151977 * (self.hair.proc + 8.313659) ** 0.5) + \
-             np.arctan(self.tair.c + self.hair.proc) - np.arctan(self.hair.proc - 1.676331) + \
-             0.00391838 * self.hair.proc ** 1.5 * np.arctan(0.023101 * self.hair.proc) - 4.686035
-        ans = TempUnit(wb, "c")
-        return ans
-
-    def dew_temp(self):
         a = np.log(self.hair.ratio) + 17.62 * self.tair.c / (243.12 + self.tair.c)
         dt = 243.12 * a / (17.62 - a)
         return TempUnit(dt, "c")
 
+    def dew_temp(self):
+        wb = self.tair.c * np.arctan(0.151977 * (self.hair.ratio + 8.313659) ** 0.5) + \
+             np.arctan(self.tair.c + self.hair.ratio) - np.arctan(self.hair.ratio - 1.676331) + \
+             0.00391838 * self.hair.ratio ** 1.5 * np.arctan(0.023101 * self.hair.ratio) - 4.686035
+        return TempUnit(wb, "c")
+
+    
+    def __str__(self):
+        return f"Tair={self.tair.c} C Hair={self.hair.proc} % Pair={self.pair.hg} Hg"
+
 
 class Tower:
-
-    def __init__(self, rr=VolumeRateUnit(2100, "m3/hour"), vol=VolumeUnit(650, "m3"), thot=TempUnit(30, "c"), tcold=TempUnit(25, "c"), air=Air()):
-        self.air = air
-        self.rr = rr
-        self.vol = vol
-        self.thot = thot
-        self.tcold = tcold
+    def __init__(self, *args):
+        temps = []
+        for v in args:
+            if isinstance(v, TempUnit):
+                temps.append(v)
+            elif isinstance(v, Air):
+                self.air = v
+            elif isinstance(v, VolumeUnit):
+                self.v = v
+            elif isinstance(v, VolumeRateUnit):
+                self.rr = v
+            else:
+                raise Exception("tower_init_error")
+        if temps[0] > temps[1]:
+            self.thot, self.tcold = temps
+        else:
+            self.cold, self.thot = temps
+    
+    def __str__(self):
+        return f"V={self.v.m3} RR={self.v.value} {self.v.unit} THOT={self.thot.c} C TCOLD={self.tcold.c} C AIR={self.air}"
 
     def lg_ratio(self):
         delta_enthalpy_of_water = HeatUnit(4.18 * (self.thot.c - self.tcold.c), "j")
@@ -124,8 +149,8 @@ class Tower:
         self.evaporation()
         self.mu = VolumeRateUnit(self.ev.value*cycles/(cycles-1), self.ev.unit)
         self.bd = VolumeRateUnit(self.mu.value/cycles, self.mu.unit)
-        self.vol.unit = self.bd.volume.unit
-        self.hti = TimeUnit(self.vol.value/self.bd.value*math.log(2), self.bd.time.unit)
+        self.v.unit = self.bd.volume.unit
+        self.hti = TimeUnit(self.v.value/self.bd.value*math.log(2), self.bd.time.unit)
 
     def efficacy(self):
         wb = self.air.wet_bulb_temp()
