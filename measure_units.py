@@ -233,9 +233,13 @@ class TimeUnit(MeasureUnit):
 
 class LengthUnit(MeasureUnit):
     class_name = "length_unit"
-    name="length"
+    name ="length"
     units = {"cm" : 1, "m" : 0.01, "mm" : 10, "inches":1/2.54}
 
+class AreaUnit(MeasureUnit):
+    class_name = "area_unit"
+    name = "area"
+    units = dict(cm2=1, m2=0.0001, mm2=100)
 
 class VolumeUnit(MeasureUnit):
     class_name = "volume_unit"
@@ -277,6 +281,14 @@ class TDSUnit(MeasureUnit):
     class_name = "tds_unit"
     name= "tds"
     units = {"usm":2, "ppm":1}
+    @property
+    def tds(self):
+        if self.usm > 100000:
+            raise Exception("Conductivity is too high")
+        elif self.usm > 7630:
+            return 0.0000000000801 * np.exp(np.pow((-50.6458 - np.log(self.usm)), 2) / 112.484)
+        else:
+            return 7.7E-20 * np.exp(np.pow((-90.4756 - np.log(self.usm)), 2) / 188.884)
 
 
 class Ion(MeasureUnit):
@@ -318,12 +330,22 @@ class Ion(MeasureUnit):
         self.units["meq"] = self.ions[self.name][1]
         self.units["ppm"] = self.ions[self.name][0]
         self.units["mol"] = 0.001
+        self.units["eq"] = self.ions[self.name][1]*0.001
 
     def molar_weight(self):
         return self.ions[self.name][0]
     
     def equiv_weight(self):
         return self.molar()/self.ions[self.name][1]
+
+    def activity(self, ion_strength):
+        z = self.charge
+        log_f = -(0.511 * ion_strength ** 0.5 / (1 + 1.5 * ion_strength ** 0.5) - 0.2 * ion_strength) * z ** 2
+        return 10 ** log_f * self.mol
+
+    @property
+    def charge(self):
+        return self.ions[self.name][2]*self.ions[self.name][1]
     
     def __add__(self, other):
         ans = Ion(self.name, self.value, self.unit)
