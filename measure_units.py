@@ -21,7 +21,7 @@ class MeasureUnit:
     
     def __getattr__(self, name):
         if name.startswith("__") or name in self.__dict__.keys():
-            return super().__getattribute__(name)
+            return self.__getattribute__(name)
         if name in self.units.keys():
             self.unit = name
             return self.value
@@ -280,15 +280,21 @@ class HumidityUnit(MeasureUnit):
 class TDSUnit(MeasureUnit):
     class_name = "tds_unit"
     name= "tds"
-    units = {"usm":2, "ppm":1}
-    @property
-    def tds(self):
+    units = {"usm":1, "ppm":0.5}
+
+    def __getattr__(self, item):
+        if "tds" in item:
+            return self.__tds()
+        else:
+            return super().__getattr__(item)
+
+    def __tds(self):
         if self.usm > 100000:
             raise Exception("Conductivity is too high")
         elif self.usm > 7630:
-            return 0.0000000000801 * np.exp(np.pow((-50.6458 - np.log(self.usm)), 2) / 112.484)
+            return 0.0000000000801 * np.exp((-50.6458 - np.log(self.usm))** 2 / 112.484)
         else:
-            return 7.7E-20 * np.exp(np.pow((-90.4756 - np.log(self.usm)), 2) / 188.884)
+            return 7.7E-20 * np.exp((-90.4756 - np.log(self.usm))**2 / 188.884)
 
 
 class Ion(MeasureUnit):
